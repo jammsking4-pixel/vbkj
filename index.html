@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Photo Share Website</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: Arial; text-align: center; background: lightblue; }
+        button { padding: 10px; margin: 10px; background: green; color: white; }
+        video, img { border: 1px solid black; max-width: 320px; }
+        #photoList { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Welcome to My Photo Share Site</h1>
+    <p>Share photos from mobile to computer on any network!</p>
+    
+    <div id="roleSelection">
+        <button id="senderButton">I'm the Sender (Camera Device)</button>
+        <button id="receiverButton">I'm the Receiver (Viewing Device)</button>
+    </div>
+    
+    <div id="senderUI" style="display:none;">
+        <p>Start camera and stream photos directly.</p>
+        <button id="startCamera">Start Camera and Stream</button>
+        <button id="takePhoto" disabled>Take Photo</button>
+        <button id="sendPhoto" disabled>Send Photo</button>
+        <video id="localVideo" width="320" height="240" autoplay muted></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
+    
+    <div id="receiverUI" style="display:none;">
+        <p>Photos will appear here with download options.</p>
+        <div id="photoList"></div>
+    </div>
+    
+    <script>
+        const roleSelection = document.getElementById('roleSelection');
+        const senderUI = document.getElementById('senderUI');
+        const receiverUI = document.getElementById('receiverUI');
+        const senderButton = document.getElementById('senderButton');
+        const receiverButton = document.getElementById('receiverButton');
+        const startCamera = document.getElementById('startCamera');
+        const takePhoto = document.getElementById('takePhoto');
+        const sendPhoto = document.getElementById('sendPhoto');
+        const localVideo = document.getElementById('localVideo');
+        const canvas = document.getElementById('canvas');
+        const photoList = document.getElementById('photoList');
+        
+        let peer;
+        let conn;
+        let localStream;
+        let photoCounter = 0;
+        
+        // STUN config for cross-network support
+        const peerConfig = {
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },  // Google's free STUN
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        };
+        
+        senderButton.addEventListener('click', () => {
+            roleSelection.style.display = 'none';
+            senderUI.style.display = 'block';
+            peer = new Peer(peerConfig);  // Use config for better connectivity
+        });
+        
+        receiverButton.addEventListener('click', () => {
+            roleSelection.style.display = 'none';
+            receiverUI.style.display = 'block';
+            peer = new Peer('desktop-receiver', peerConfig);  // Fixed ID with config
+            peer.on('connection', (connection) => {
+                conn = connection;
+                conn.on('data', (data) => {
+                    photoCounter++;
+                    const container = document.createElement('div');
+                    const img = document.createElement('img');
+                    img.src = data;
+                    img.width = 320;
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = data;
+                    downloadLink.download = `photo_${photoCounter}.png`;
+                    downloadLink.textContent = 'Download to Folder (e.g., sst)';
+                    downloadLink.style.display = 'block';
+                    container.appendChild(img);
+                    container.appendChild(downloadLink);
+                    photoList.appendChild(container);
+                });
+            });
+        });
+        
+        startCamera.addEventListener('click', async () => {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                localVideo.srcObject = localStream;
+                conn = peer.connect('desktop-receiver');
+                takePhoto.disabled = false;
+            } catch (error) {
+                alert('Camera access denied.');
+            }
+        });
+        
+        takePhoto.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
+            canvas.width = localVideo.videoWidth;
+            canvas.height = localVideo.videoHeight;
+            context.drawImage(localVideo, 0, 0);
+            const dataUrl = canvas.toDataURL('image/png');
+            sendPhoto.disabled = false;
+            window.currentPhoto = dataUrl;
+        });
+        
+        sendPhoto.addEventListener('click', () => {
+            if (conn && window.currentPhoto) {
+                conn.send(window.currentPhoto);
+                alert('Photo sent!');
+                sendPhoto.disabled = true;
+            }
+        });
+    </script>
+</body>
+</html>
